@@ -10,6 +10,7 @@ A sports first vision analytics workbench that turns video into track data, even
 
 ## Quick start
 API
+Use Python 3.12 for the API venv on macOS to avoid build issues with pydantic-core.
 1. `cd apps/api`
 2. `python -m venv .venv && source .venv/bin/activate`
 3. `pip install -r requirements.txt`
