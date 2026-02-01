@@ -5,13 +5,19 @@ import {
   JobRecord,
   getEvents,
   getJob,
+  getJobConfig,
   getMetrics,
   getTracks,
   rerunAnalytics,
+  updateJobConfig,
 } from "../api";
+import CalibrationEditor, {
+  CalibrationPointDraft,
+} from "../components/CalibrationEditor";
 import EventTimeline from "../components/EventTimeline";
 import MetricsPanel from "../components/MetricsPanel";
 import VideoOverlay from "../components/VideoOverlay";
+import ZoneEditor, { ZoneDraft } from "../components/ZoneEditor";
 
 const JobDetail = () => {
   const { jobId } = useParams();
@@ -24,6 +30,14 @@ const JobDetail = () => {
   const [showBall, setShowBall] = useState(true);
   const [showTrails, setShowTrails] = useState(false);
   const [rerunLoading, setRerunLoading] = useState(false);
+  const [zones, setZones] = useState<ZoneDraft[]>([]);
+  const [calibrationPoints, setCalibrationPoints] = useState<
+    CalibrationPointDraft[]
+  >([]);
+  const [zonesSaving, setZonesSaving] = useState(false);
+  const [zonesError, setZonesError] = useState<string | null>(null);
+  const [calibrationSaving, setCalibrationSaving] = useState(false);
+  const [calibrationError, setCalibrationError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const inputSrc = useMemo(() => {
@@ -57,6 +71,33 @@ const JobDetail = () => {
   }, [jobId]);
 
   useEffect(() => {
+    if (!jobId) return;
+
+    const loadConfig = async () => {
+      const config = await getJobConfig(jobId);
+      const zoneDrafts = (config.zones as any[] | undefined)?.map((zone) => ({
+        id: zone.id,
+        name: zone.name,
+        points: (zone.polygon || [])
+          .map((pair: number[]) => `${pair[0]},${pair[1]}`)
+          .join("; "),
+      }));
+      const calibrationDrafts = (config.calibration_points as any[] | undefined)?.map(
+        (point) => ({
+          image_x: String(point.image_x ?? ""),
+          image_y: String(point.image_y ?? ""),
+          field_x: String(point.field_x ?? ""),
+          field_y: String(point.field_y ?? ""),
+        })
+      );
+      setZones(zoneDrafts ?? []);
+      setCalibrationPoints(calibrationDrafts ?? []);
+    };
+
+    loadConfig();
+  }, [jobId]);
+
+  useEffect(() => {
     if (!jobId || !job || job.status !== "completed") return;
 
     const loadArtifacts = async () => {
@@ -72,6 +113,67 @@ const JobDetail = () => {
 
     loadArtifacts();
   }, [jobId, job]);
+
+  const parsePolygon = (raw: string) => {
+    return raw
+      .split(";")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((pair) => pair.split(",").map((value) => Number(value.trim())))
+      .filter((pair) => pair.length === 2 && pair.every((value) => !Number.isNaN(value)));
+  };
+
+  const handleZoneSave = async () => {
+    if (!jobId) return;
+    setZonesSaving(true);
+    setZonesError(null);
+    try {
+      const payloadZones = zones.map((zone, index) => {
+        const polygon = parsePolygon(zone.points);
+        if (polygon.length < 3) {
+          throw new Error(`Zone ${zone.name || index + 1} needs at least 3 points.`);
+        }
+        return {
+          id: zone.id || `zone-${index + 1}`,
+          name: zone.name || `Zone ${index + 1}`,
+          polygon,
+        };
+      });
+      await updateJobConfig(jobId, { zones: payloadZones });
+    } catch (err) {
+      setZonesError((err as Error).message);
+    } finally {
+      setZonesSaving(false);
+    }
+  };
+
+  const handleCalibrationSave = async () => {
+    if (!jobId) return;
+    setCalibrationSaving(true);
+    setCalibrationError(null);
+    try {
+      const payloadPoints = calibrationPoints.map((point, index) => {
+        const imageX = Number(point.image_x);
+        const imageY = Number(point.image_y);
+        const fieldX = Number(point.field_x);
+        const fieldY = Number(point.field_y);
+        if ([imageX, imageY, fieldX, fieldY].some((value) => Number.isNaN(value))) {
+          throw new Error(`Calibration point ${index + 1} has invalid values.`);
+        }
+        return {
+          image_x: imageX,
+          image_y: imageY,
+          field_x: fieldX,
+          field_y: fieldY,
+        };
+      });
+      await updateJobConfig(jobId, { calibration_points: payloadPoints });
+    } catch (err) {
+      setCalibrationError((err as Error).message);
+    } finally {
+      setCalibrationSaving(false);
+    }
+  };
 
   const handleEventSelect = (time: number) => {
     if (videoRef.current) {
@@ -161,6 +263,44 @@ const JobDetail = () => {
         <div className="right-panel">
           <MetricsPanel metrics={metrics} />
           <EventTimeline events={events} onSelect={handleEventSelect} />
+          <ZoneEditor
+            zones={zones}
+            onUpdate={(index, zone) => {
+              setZones((prev) => prev.map((item, idx) => (idx === index ? zone : item)));
+            }}
+            onAdd={() =>
+              setZones((prev) => [
+                ...prev,
+                { id: `zone-${Date.now()}`, name: "", points: "" },
+              ])
+            }
+            onRemove={(index) =>
+              setZones((prev) => prev.filter((_, idx) => idx !== index))
+            }
+            onSave={handleZoneSave}
+            saving={zonesSaving}
+            error={zonesError}
+          />
+          <CalibrationEditor
+            points={calibrationPoints}
+            onUpdate={(index, point) =>
+              setCalibrationPoints((prev) =>
+                prev.map((item, idx) => (idx === index ? point : item))
+              )
+            }
+            onAdd={() =>
+              setCalibrationPoints((prev) => [
+                ...prev,
+                { image_x: "", image_y: "", field_x: "", field_y: "" },
+              ])
+            }
+            onRemove={(index) =>
+              setCalibrationPoints((prev) => prev.filter((_, idx) => idx !== index))
+            }
+            onSave={handleCalibrationSave}
+            saving={calibrationSaving}
+            error={calibrationError}
+          />
           <div className="panel">
             <div className="panel-header">
               <h3>Exports</h3>

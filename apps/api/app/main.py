@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from .core.config import DATA_DIR, DEFAULT_PROFILE
 from .core.jobs import JobStore
 from .core.pipeline import recompute_analytics
-from .core.schemas import JobConfig, JobStatus
+from .core.schemas import JobConfig, JobConfigUpdate, JobStatus
 from .core.storage import artifacts_dir, input_dir, job_file, load_json, save_json
 
 
@@ -57,6 +57,34 @@ async def get_job(job_id: str):
     except KeyError:
         raise HTTPException(status_code=404, detail="job not found")
     return job.model_dump()
+
+
+@app.get("/api/jobs/{job_id}/config")
+async def get_job_config(job_id: str):
+    store: JobStore = app.state.store
+    try:
+        job = await store.get_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job.config.model_dump()
+
+
+@app.patch("/api/jobs/{job_id}/config")
+async def update_job_config(job_id: str, payload: JobConfigUpdate):
+    store: JobStore = app.state.store
+    try:
+        job = await store.get_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not updates:
+        return job.config.model_dump()
+
+    job.config = job.config.model_copy(update=updates)
+    job.updated_at = datetime.utcnow()
+    await store.update_job(job)
+    return job.config.model_dump()
 
 
 @app.post("/api/jobs")
@@ -160,12 +188,17 @@ async def download_artifact(job_id: str, artifact_name: str):
 
 
 @app.post("/api/jobs/{job_id}/rerun")
-async def rerun_analytics(job_id: str):
+async def rerun_analytics(job_id: str, payload: Optional[JobConfigUpdate] = None):
     store: JobStore = app.state.store
     try:
         job = await store.get_job(job_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="job not found")
+
+    if payload is not None:
+        updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+        if updates:
+            job.config = job.config.model_copy(update=updates)
 
     series_path = artifacts_dir(job_id) / "series.json"
     if not series_path.exists():

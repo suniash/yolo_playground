@@ -24,6 +24,8 @@ export const fetchJson = async <T>(path: string): Promise<T> => {
 
 export const listJobs = () => fetchJson<JobRecord[]>("/api/jobs");
 export const getJob = (id: string) => fetchJson<JobRecord>(`/api/jobs/${id}`);
+export const getJobConfig = (id: string) =>
+  fetchJson<Record<string, unknown>>(`/api/jobs/${id}/config`);
 export const getTracks = (id: string) => fetchJson<any>(`/api/jobs/${id}/tracks`);
 export const getEvents = (id: string) => fetchJson<any>(`/api/jobs/${id}/events`);
 export const getMetrics = (id: string) => fetchJson<any>(`/api/jobs/${id}/metrics`);
@@ -55,6 +57,21 @@ export const createJob = async (payload: {
 export const rerunAnalytics = async (jobId: string) => {
   const response = await fetch(`${API_URL}/api/jobs/${jobId}/rerun`, {
     method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
+};
+
+export const updateJobConfig = async (
+  jobId: string,
+  updates: Record<string, unknown>
+) => {
+  const response = await fetch(`${API_URL}/api/jobs/${jobId}/config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
   });
   if (!response.ok) {
     throw new Error(await response.text());

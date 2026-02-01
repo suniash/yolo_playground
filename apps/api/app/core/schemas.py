@@ -39,6 +39,14 @@ class JobConfig(BaseModel):
     thresholds: dict[str, float] = Field(default_factory=dict)
 
 
+class JobConfigUpdate(BaseModel):
+    profile: Optional[SportProfile] = None
+    analytics_enabled: Optional[bool] = None
+    calibration_points: Optional[list[CalibrationPoint]] = None
+    zones: Optional[list[ZoneDefinition]] = None
+    thresholds: Optional[dict[str, float]] = None
+
+
 class InputAsset(BaseModel):
     filename: str
     content_type: Optional[str]
