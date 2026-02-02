@@ -42,7 +42,7 @@ def exports_dir(job_id: str) -> Path:
 
 def save_json(path: Path, payload: Any) -> None:
     ensure_dir(path.parent)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
 
 def load_json(path: Path) -> Any:

@@ -21,6 +21,12 @@ from .core.shares import ShareStore
 from .core.storage import artifacts_dir, input_dir, job_file, load_json, save_json, shares_file
 
 
+def _apply_config_updates(config: JobConfig, updates: dict) -> JobConfig:
+    merged = config.model_dump()
+    merged.update(updates)
+    return JobConfig.model_validate(merged)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     store = JobStore(DATA_DIR)
@@ -144,7 +150,7 @@ async def update_job_config(job_id: str, payload: JobConfigUpdate, _: None = Dep
     if not updates:
         return job.config.model_dump()
 
-    job.config = job.config.model_copy(update=updates)
+    job.config = _apply_config_updates(job.config, updates)
     job.updated_at = datetime.utcnow()
     await store.update_job(job)
     return job.config.model_dump()
@@ -221,7 +227,7 @@ async def rerun_analytics(job_id: str, payload: Optional[JobConfigUpdate] = None
     if payload is not None:
         updates = payload.model_dump(exclude_unset=True, exclude_none=True)
         if updates:
-            job.config = job.config.model_copy(update=updates)
+            job.config = _apply_config_updates(job.config, updates)
 
     series_path = artifacts_dir(job_id) / "series.json"
     if not series_path.exists():

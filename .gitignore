@@ -21,6 +21,7 @@ dist/
 # App data
 /data/
 /apps/api/data/
+/apps/data/
 
 # Env
 .env

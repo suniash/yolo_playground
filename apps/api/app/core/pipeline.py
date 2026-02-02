@@ -447,50 +447,43 @@ def _write_exports(job_id: str, events: list[dict[str, Any]], metrics: dict[str,
         writer.writerows(summary_rows)
 
     report_html.write_text(
-        """
+        f"""
 <!doctype html>
 <html lang=\"en\">
 <head>
   <meta charset=\"utf-8\" />
   <title>Vision Analytics Report</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 32px; }
-    h1 { margin-bottom: 8px; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .card { border: 1px solid #d2d2d2; border-radius: 12px; padding: 16px; }
-    table { width: 100%; border-collapse: collapse; }
-    td, th { padding: 6px 8px; border-bottom: 1px solid #eee; text-align: left; }
+    body {{ font-family: Arial, sans-serif; margin: 32px; }}
+    h1 {{ margin-bottom: 8px; }}
+    .grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }}
+    .card {{ border: 1px solid #d2d2d2; border-radius: 12px; padding: 16px; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    td, th {{ padding: 6px 8px; border-bottom: 1px solid #eee; text-align: left; }}
   </style>
 </head>
 <body>
   <h1>Vision Analytics Report</h1>
-  <p>Generated on {date}</p>
+  <p>Generated on {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}</p>
   <div class=\"grid\">
     <div class=\"card\">
       <h2>Summary</h2>
       <table>
         <tr><th>Metric</th><th>Value</th></tr>
-        <tr><td>Player count</td><td>{player_count}</td></tr>
-        <tr><td>Team A possession</td><td>{team_a}</td></tr>
-        <tr><td>Team B possession</td><td>{team_b}</td></tr>
-        <tr><td>Average speed (m/s)</td><td>{avg_speed}</td></tr>
+        <tr><td>Player count</td><td>{metrics["summary"]["player_count"]}</td></tr>
+        <tr><td>Team A possession</td><td>{metrics["summary"]["team_possession"]["A"]}</td></tr>
+        <tr><td>Team B possession</td><td>{metrics["summary"]["team_possession"]["B"]}</td></tr>
+        <tr><td>Average speed (m/s)</td><td>{metrics["summary"]["avg_speed_mps"]}</td></tr>
       </table>
     </div>
     <div class=\"card\">
       <h2>Events</h2>
-      <p>{event_count} detected events</p>
+      <p>{len(events)} detected events</p>
     </div>
   </div>
 </body>
 </html>
-""".format(
-            date=datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
-            player_count=metrics["summary"]["player_count"],
-            team_a=metrics["summary"]["team_possession"]["A"],
-            team_b=metrics["summary"]["team_possession"]["B"],
-            avg_speed=metrics["summary"]["avg_speed_mps"],
-            event_count=len(events),
-        ),
+""",
         encoding="utf-8",
     )
 
