@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 DATA_DIR = Path(os.getenv("VAP_DATA_DIR", ROOT_DIR / "data"))
+CV_PROVIDER = os.getenv("VAP_CV_PROVIDER", "synthetic")
 
 DEFAULT_PROFILE = "soccer"
 

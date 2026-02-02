@@ -16,6 +16,10 @@ Use Python 3.12 for the API venv on macOS to avoid build issues with pydantic-co
 3. `pip install -r requirements.txt`
 4. `uvicorn app.main:app --reload --port 8000`
 
+Optional real CV
+1. `pip install -r requirements-cv.txt`
+2. `VAP_CV_PROVIDER=ultralytics VAP_MODEL=yolov8n.pt uvicorn app.main:app --reload --port 8000`
+
 Web
 1. `cd apps/web`
 2. `npm install`

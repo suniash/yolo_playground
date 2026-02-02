@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from .config import DEFAULT_PROFILE, FIELD_DIMENSIONS
+from .config import CV_PROVIDER, DEFAULT_PROFILE, FIELD_DIMENSIONS
+from .cv import run_ultralytics
 from .schemas import ArtifactItem, ArtifactManifest, JobConfig, JobRecord, JobStatus
 from .storage import artifacts_dir, exports_dir, file_size, save_json
 
@@ -554,7 +555,15 @@ async def run_pipeline(
         await asyncio.sleep(delay)
 
         if stage == "detect":
-            tracks_data, series = _generate_tracks(job.config, seed=hash(job.id) % 10000)
+            if input_path and CV_PROVIDER != "synthetic":
+                try:
+                    tracks_data, series = run_ultralytics(input_path, job.config)
+                    job.summary["cv_provider"] = CV_PROVIDER
+                except Exception as exc:
+                    job.summary["cv_warning"] = str(exc)
+                    tracks_data, series = _generate_tracks(job.config, seed=hash(job.id) % 10000)
+            else:
+                tracks_data, series = _generate_tracks(job.config, seed=hash(job.id) % 10000)
             save_json(artifacts_path / "tracks.json", tracks_data)
             save_json(artifacts_path / "series.json", series)
             manifest.items.append(ArtifactItem(
