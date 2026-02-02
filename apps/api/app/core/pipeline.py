@@ -4,7 +4,7 @@ import asyncio
 import csv
 import math
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -464,7 +464,7 @@ def _write_exports(job_id: str, events: list[dict[str, Any]], metrics: dict[str,
 </head>
 <body>
   <h1>Vision Analytics Report</h1>
-  <p>Generated on {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}</p>
+  <p>Generated on {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}</p>
   <div class=\"grid\">
     <div class=\"card\">
       <h2>Summary</h2>
@@ -542,7 +542,7 @@ async def run_pipeline(
     for stage, progress, delay in stages:
         job.stage = stage
         job.progress = progress
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now(timezone.utc)
         if on_update:
             await on_update(job)
         await asyncio.sleep(delay)
@@ -622,7 +622,7 @@ async def run_pipeline(
     job.status = JobStatus.completed
     job.progress = 1.0
     job.stage = "completed"
-    job.updated_at = datetime.utcnow()
+    job.updated_at = datetime.now(timezone.utc)
     job.summary.pop("series", None)
     job.summary.pop("events_detail", None)
     if on_update:

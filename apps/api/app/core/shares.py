@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import uuid4
 
@@ -27,8 +27,13 @@ class ShareStore:
     async def create(self, job_id: str, ttl_hours: Optional[int] = None) -> ShareLink:
         expires_at = None
         if ttl_hours:
-            expires_at = datetime.utcnow() + timedelta(hours=ttl_hours)
-        link = ShareLink(id=uuid4().hex, job_id=job_id, created_at=datetime.utcnow(), expires_at=expires_at)
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+        link = ShareLink(
+            id=uuid4().hex,
+            job_id=job_id,
+            created_at=datetime.now(timezone.utc),
+            expires_at=expires_at,
+        )
         self.items[link.id] = link
         await self.save()
         return link
@@ -37,6 +42,6 @@ class ShareStore:
         link = self.items.get(link_id)
         if not link:
             return None
-        if link.expires_at and link.expires_at < datetime.utcnow():
+        if link.expires_at and link.expires_at < datetime.now(timezone.utc):
             return None
         return link

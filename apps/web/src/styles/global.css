@@ -138,6 +138,11 @@ a {
   margin-bottom: 12px;
 }
 
+.panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .panel-header h3 {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
@@ -347,6 +352,11 @@ a {
   pointer-events: none;
 }
 
+.overlay-interactive {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
 .overlay-controls {
   display: flex;
   gap: 16px;
@@ -462,6 +472,61 @@ a {
 .team-meta {
   font-size: 12px;
   color: var(--muted);
+}
+
+.heatmap-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.heatmap-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.heatmap-cell {
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.player-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.player-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+
+.player-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.player-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .zone-list,

@@ -11,6 +11,8 @@ interface CalibrationEditorProps {
   onAdd: () => void;
   onRemove: (index: number) => void;
   onSave: () => void;
+  captureEnabled: boolean;
+  onToggleCapture: () => void;
   saving: boolean;
   error: string | null;
 }
@@ -21,6 +23,8 @@ const CalibrationEditor = ({
   onAdd,
   onRemove,
   onSave,
+  captureEnabled,
+  onToggleCapture,
   saving,
   error,
 }: CalibrationEditorProps) => {
@@ -28,12 +32,18 @@ const CalibrationEditor = ({
     <div className="panel">
       <div className="panel-header">
         <h3>Calibration</h3>
-        <button className="btn-secondary" type="button" onClick={onAdd}>
-          Add point
-        </button>
+        <div className="panel-actions">
+          <button className="btn-secondary" type="button" onClick={onAdd}>
+            Add point
+          </button>
+          <button className="btn-secondary" type="button" onClick={onToggleCapture}>
+            {captureEnabled ? "Stop capture" : "Capture from video"}
+          </button>
+        </div>
       </div>
       <p className="helper">
         Add reference points to map image coordinates to field coordinates.
+        {captureEnabled ? " Click the video to add image coordinates." : ""}
       </p>
       <div className="calibration-grid">
         {points.map((point, index) => (

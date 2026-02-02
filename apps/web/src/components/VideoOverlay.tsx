@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type MouseEvent } from "react";
 
 type TrackFrame = {
   frame: number;
@@ -23,6 +23,8 @@ interface VideoOverlayProps {
   showBall: boolean;
   showTrails: boolean;
   teamOverrides?: Record<string, string>;
+  markers?: Array<{ x: number; y: number; label?: string; color?: string }>;
+  onSelectPoint?: (x: number, y: number) => void;
   onReady?: (video: HTMLVideoElement | null) => void;
 }
 
@@ -39,6 +41,8 @@ const VideoOverlay = ({
   showBall,
   showTrails,
   teamOverrides,
+  markers,
+  onSelectPoint,
   onReady,
 }: VideoOverlayProps) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -117,6 +121,24 @@ const VideoOverlay = ({
         ctx.font = "12px 'Space Grotesk', sans-serif";
         ctx.fillText(obj.id, x * scaleX + 4, y * scaleY - 4);
       });
+
+      if (markers && markers.length > 0) {
+        markers.forEach((marker, index) => {
+          const color = marker.color ?? "#1d4ed8";
+          ctx.fillStyle = color;
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 2;
+          const cx = marker.x * scaleX;
+          const cy = marker.y * scaleY;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.font = "12px 'Space Grotesk', sans-serif";
+          ctx.fillStyle = "#111827";
+          ctx.fillText(marker.label ?? `P${index + 1}`, cx + 8, cy - 8);
+        });
+      }
     };
 
     const onTimeUpdate = () => draw();
@@ -130,7 +152,20 @@ const VideoOverlay = ({
       video.removeEventListener("play", onTimeUpdate);
       video.removeEventListener("seeked", onTimeUpdate);
     };
-  }, [tracks, framesByIndex, showPlayers, showBall, showTrails]);
+  }, [tracks, framesByIndex, showPlayers, showBall, showTrails, markers]);
+
+  const handleClick = (event: MouseEvent<HTMLCanvasElement>) => {
+    if (!onSelectPoint || !videoRef.current || !canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const video = videoRef.current;
+    const baseWidth = tracks?.meta.width || video.videoWidth || rect.width;
+    const baseHeight = tracks?.meta.height || video.videoHeight || rect.height;
+    const scaleX = baseWidth / rect.width;
+    const scaleY = baseHeight / rect.height;
+    onSelectPoint(x * scaleX, y * scaleY);
+  };
 
   useEffect(() => {
     if (onReady) {
@@ -141,7 +176,11 @@ const VideoOverlay = ({
   return (
     <div className="video-shell">
       <video ref={videoRef} src={src} controls preload="metadata" />
-      <canvas ref={canvasRef} className="overlay" />
+      <canvas
+        ref={canvasRef}
+        className={`overlay ${onSelectPoint ? "overlay-interactive" : ""}`}
+        onClick={handleClick}
+      />
     </div>
   );
 };

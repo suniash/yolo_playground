@@ -17,9 +17,11 @@ import CalibrationEditor, {
   CalibrationPointDraft,
 } from "../components/CalibrationEditor";
 import EventTimeline from "../components/EventTimeline";
+import HeatmapPanel from "../components/HeatmapPanel";
 import MetricsPanel from "../components/MetricsPanel";
 import TeamAssignment from "../components/TeamAssignment";
 import VideoOverlay from "../components/VideoOverlay";
+import PlayerRoster from "../components/PlayerRoster";
 import ZoneEditor, { ZoneDraft } from "../components/ZoneEditor";
 
 const JobDetail = () => {
@@ -41,6 +43,7 @@ const JobDetail = () => {
   const [zonesError, setZonesError] = useState<string | null>(null);
   const [calibrationSaving, setCalibrationSaving] = useState(false);
   const [calibrationError, setCalibrationError] = useState<string | null>(null);
+  const [calibrationCapture, setCalibrationCapture] = useState(false);
   const [teamOverrides, setTeamOverrides] = useState<Record<string, string>>({});
   const [teamSaving, setTeamSaving] = useState(false);
   const [teamError, setTeamError] = useState<string | null>(null);
@@ -193,6 +196,35 @@ const JobDetail = () => {
     }
   };
 
+  const handleCalibrationCapture = (x: number, y: number) => {
+    setCalibrationPoints((prev) => {
+      const next = [...prev];
+      const targetIndex = next.findIndex(
+        (point) => point.image_x === "" || point.image_y === ""
+      );
+      const updated = {
+        image_x: x.toFixed(1),
+        image_y: y.toFixed(1),
+        field_x: "",
+        field_y: "",
+      };
+      if (targetIndex >= 0) {
+        next[targetIndex] = { ...next[targetIndex], ...updated };
+        return next;
+      }
+      return [...next, updated];
+    });
+  };
+
+  const calibrationMarkers = calibrationPoints
+    .map((point, index) => {
+      const x = Number(point.image_x);
+      const y = Number(point.image_y);
+      if (Number.isNaN(x) || Number.isNaN(y)) return null;
+      return { x, y, label: `P${index + 1}` };
+    })
+    .filter(Boolean) as Array<{ x: number; y: number; label: string }>;
+
   const handleEventSelect = (time: number) => {
     if (videoRef.current) {
       videoRef.current.currentTime = time;
@@ -291,6 +323,8 @@ const JobDetail = () => {
               showBall={showBall}
               showTrails={showTrails}
               teamOverrides={teamOverrides}
+              markers={calibrationMarkers}
+              onSelectPoint={calibrationCapture ? handleCalibrationCapture : undefined}
               onReady={(video) => (videoRef.current = video)}
             />
           ) : (
@@ -326,6 +360,8 @@ const JobDetail = () => {
 
         <div className="right-panel">
           <MetricsPanel metrics={metrics} />
+          <HeatmapPanel metrics={metrics} />
+          <PlayerRoster metrics={metrics} />
           <EventTimeline events={events} onSelect={handleEventSelect} />
           <TeamAssignment
             players={tracks?.tracks?.filter((track: any) => track.label === "player") ?? []}
@@ -379,6 +415,8 @@ const JobDetail = () => {
               setCalibrationPoints((prev) => prev.filter((_, idx) => idx !== index))
             }
             onSave={handleCalibrationSave}
+            captureEnabled={calibrationCapture}
+            onToggleCapture={() => setCalibrationCapture((prev) => !prev)}
             saving={calibrationSaving}
             error={calibrationError}
           />

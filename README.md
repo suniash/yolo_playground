@@ -31,6 +31,13 @@ Web
 Set `VITE_API_URL` if your API runs on a different host.
 If `VAP_API_KEY` is set on the API, set `VITE_API_KEY` in the web app to match.
 
+## Demo seed job
+1. `cd apps/api`
+2. `.venv/bin/python scripts/seed_demo.py`
+
+## API docs
+See `docs/API.md` for endpoints and curl examples.
+
 ## Repository layout
 - `apps/api` FastAPI service and pipeline core
 - `apps/web` React studio UI

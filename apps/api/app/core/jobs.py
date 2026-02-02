@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -34,7 +34,7 @@ class JobStore:
         save_json(job_file(job.id), job.model_dump())
 
     async def create_job(self, config: JobConfig) -> JobRecord:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         job = JobRecord(
             id=uuid4().hex,
             status=JobStatus.queued,
@@ -58,7 +58,7 @@ class JobStore:
             async with self.subscriber_lock:
                 subscribers = list(self.subscribers)
                 job_subscribers = list(self.job_subscribers.get(job.id, set()))
-        payload = job.model_dump()
+        payload = job.model_dump(mode="json")
         for queue in subscribers + job_subscribers:
             try:
                 queue.put_nowait(payload)
@@ -68,17 +68,17 @@ class JobStore:
     async def run_job(self, job_id: str, input_path: Optional[Path]) -> None:
         job = self.jobs[job_id]
         job.status = JobStatus.processing
-        job.updated_at = datetime.utcnow()
+        job.updated_at = datetime.now(timezone.utc)
         await self.update_job(job)
         try:
             manifest = await run_pipeline(job, input_path, on_update=self.update_job)
             job.manifest = manifest
-            job.updated_at = datetime.utcnow()
+            job.updated_at = datetime.now(timezone.utc)
             await self.update_job(job)
         except Exception as exc:
             job.status = JobStatus.failed
             job.error = str(exc)
-            job.updated_at = datetime.utcnow()
+            job.updated_at = datetime.now(timezone.utc)
             await self.update_job(job)
 
     async def list_jobs(self) -> list[JobRecord]:
