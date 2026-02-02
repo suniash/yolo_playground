@@ -229,13 +229,39 @@ def _compute_events(config: JobConfig, series: dict[str, Any]) -> list[dict[str,
 
     events = []
 
+    possession_min_frames = int(config.thresholds.get("possession_min_frames", 8))
+    sprint_speed = float(
+        config.thresholds.get("sprint_speed_mps", 6.0 if profile == "soccer" else 5.0)
+    )
+    sprint_min_frames = int(config.thresholds.get("sprint_min_frames", 6))
+    crowding_distance = float(config.thresholds.get("crowding_distance_px", 80))
+    crowding_player_count = int(config.thresholds.get("crowding_player_count", 6))
+    crowding_min_frames = int(config.thresholds.get("crowding_min_frames", 5))
+    zone_entry_min_frames = int(config.thresholds.get("zone_entry_min_frames", 4))
+
+    def _point_in_polygon(x: float, y: float, polygon: list[list[float]]) -> bool:
+        inside = False
+        if len(polygon) < 3:
+            return False
+        j = len(polygon) - 1
+        for i in range(len(polygon)):
+            xi, yi = polygon[i]
+            xj, yj = polygon[j]
+            intersects = ((yi > y) != (yj > y)) and (
+                x < (xj - xi) * (y - yi) / (yj - yi + 1e-9) + xi
+            )
+            if intersects:
+                inside = not inside
+            j = i
+        return inside
+
     last_owner = owner_by_frame[0]
     stable_count = 0
     for idx, owner in enumerate(owner_by_frame):
         if owner == last_owner:
             stable_count += 1
         else:
-            if stable_count >= 8:
+            if stable_count >= possession_min_frames:
                 events.append({
                     "id": f"evt_pos_{idx}",
                     "type": "possession_change",
@@ -244,7 +270,9 @@ def _compute_events(config: JobConfig, series: dict[str, Any]) -> list[dict[str,
                     "frame": idx,
                     "involved": [last_owner, owner],
                     "confidence": 0.78,
-                    "explanation": f"ball owner changed from {last_owner} to {owner} for > {stable_count} frames",
+                    "explanation": (
+                        f"ball owner changed from {last_owner} to {owner} and held for {stable_count} frames"
+                    ),
                 })
             last_owner = owner
             stable_count = 0
@@ -253,30 +281,72 @@ def _compute_events(config: JobConfig, series: dict[str, Any]) -> list[dict[str,
     zone_threshold = length * 0.66
     shot_threshold = length * 0.92
 
-    for idx, (x, y) in enumerate(ball_positions):
-        field_x, field_y = _map_to_field(x, y, width, height, profile)
-        if field_x > zone_threshold and idx % 40 == 0:
-            events.append({
-                "id": f"evt_zone_{idx}",
-                "type": "entry_into_zone",
-                "start": round(idx / fps, 2),
-                "end": round((idx + 10) / fps, 2),
-                "frame": idx,
-                "involved": [owner_by_frame[idx]],
-                "confidence": 0.64,
-                "explanation": "ball entered attacking third",
-            })
-        if field_x > shot_threshold and idx % 50 == 0:
-            events.append({
-                "id": f"evt_shot_{idx}",
-                "type": "shot_attempt",
-                "start": round(idx / fps, 2),
-                "end": round((idx + 6) / fps, 2),
-                "frame": idx,
-                "involved": [owner_by_frame[idx]],
-                "confidence": 0.7,
-                "explanation": "ball reached shot zone",
-            })
+    if config.zones:
+        zone_state = {
+            zone.id: {"inside": False, "streak": 0} for zone in config.zones
+        }
+        shot_keywords = ("shot", "box", "key", "paint")
+
+        for idx, (x, y) in enumerate(ball_positions):
+            for zone in config.zones:
+                state = zone_state[zone.id]
+                inside = _point_in_polygon(x, y, zone.polygon)
+                if inside and not state["inside"]:
+                    state["streak"] += 1
+                    if state["streak"] >= zone_entry_min_frames:
+                        event_base = {
+                            "id": f"evt_zone_{zone.id}_{idx}",
+                            "start": round((idx - state["streak"] + 1) / fps, 2),
+                            "end": round((idx + 6) / fps, 2),
+                            "frame": idx,
+                            "involved": [owner_by_frame[idx]],
+                            "confidence": 0.66,
+                            "zone_id": zone.id,
+                            "zone_name": zone.name,
+                            "explanation": (
+                                f"ball entered {zone.name} for {state['streak']} frames"
+                            ),
+                        }
+                        events.append({**event_base, "type": "entry_into_zone"})
+                        if any(keyword in zone.name.lower() for keyword in shot_keywords):
+                            events.append({
+                                **event_base,
+                                "id": f"evt_shot_{zone.id}_{idx}",
+                                "type": "shot_attempt",
+                                "confidence": 0.72,
+                                "explanation": f"ball entered shot zone {zone.name}",
+                            })
+                        state["inside"] = True
+                elif inside and state["inside"]:
+                    continue
+                else:
+                    state["streak"] = 0
+                    state["inside"] = False
+    else:
+        for idx, (x, y) in enumerate(ball_positions):
+            field_x, field_y = _map_to_field(x, y, width, height, profile)
+            if field_x > zone_threshold and idx % 40 == 0:
+                events.append({
+                    "id": f"evt_zone_{idx}",
+                    "type": "entry_into_zone",
+                    "start": round(idx / fps, 2),
+                    "end": round((idx + 10) / fps, 2),
+                    "frame": idx,
+                    "involved": [owner_by_frame[idx]],
+                    "confidence": 0.64,
+                    "explanation": "ball entered attacking third",
+                })
+            if field_x > shot_threshold and idx % 50 == 0:
+                events.append({
+                    "id": f"evt_shot_{idx}",
+                    "type": "shot_attempt",
+                    "start": round(idx / fps, 2),
+                    "end": round((idx + 6) / fps, 2),
+                    "frame": idx,
+                    "involved": [owner_by_frame[idx]],
+                    "confidence": 0.7,
+                    "explanation": "ball reached shot zone",
+                })
 
     for player_id, positions in player_positions.items():
         speed_streak = 0
@@ -286,10 +356,10 @@ def _compute_events(config: JobConfig, series: dict[str, Any]) -> list[dict[str,
             if last_pos is not None:
                 dist = math.hypot(field_x - last_pos[0], field_y - last_pos[1])
                 speed = dist * fps
-                if speed > (6.0 if profile == "soccer" else 5.0):
+                if speed > sprint_speed:
                     speed_streak += 1
                 else:
-                    if speed_streak >= 6:
+                    if speed_streak >= sprint_min_frames:
                         events.append({
                             "id": f"evt_sprint_{player_id}_{idx}",
                             "type": "sprint_burst",
@@ -298,7 +368,7 @@ def _compute_events(config: JobConfig, series: dict[str, Any]) -> list[dict[str,
                             "frame": idx,
                             "involved": [player_id],
                             "confidence": 0.6,
-                            "explanation": "player exceeded sprint threshold",
+                            "explanation": f"player exceeded sprint threshold for {speed_streak} frames",
                         })
                     speed_streak = 0
             last_pos = (field_x, field_y)
@@ -308,20 +378,20 @@ def _compute_events(config: JobConfig, series: dict[str, Any]) -> list[dict[str,
         nearby = 0
         for positions in player_positions.values():
             px, py = positions[idx]
-            if math.hypot(px - ball_x, py - ball_y) < 80:
+            if math.hypot(px - ball_x, py - ball_y) < crowding_distance:
                 nearby += 1
-        if nearby >= 6:
+        if nearby >= crowding_player_count:
             crowding_window += 1
-            if crowding_window == 5:
+            if crowding_window == crowding_min_frames:
                 events.append({
                     "id": f"evt_crowd_{idx}",
                     "type": "crowding",
-                    "start": round((idx - 5) / fps, 2),
+                    "start": round((idx - crowding_min_frames) / fps, 2),
                     "end": round(idx / fps, 2),
                     "frame": idx,
                     "involved": [owner_by_frame[idx]],
                     "confidence": 0.58,
-                    "explanation": "many players clustered near ball",
+                    "explanation": f"{nearby} players clustered near ball",
                 })
         else:
             crowding_window = 0
