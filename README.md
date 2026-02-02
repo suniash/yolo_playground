@@ -26,6 +26,7 @@ Web
 3. `npm run dev`
 
 Set `VITE_API_URL` if your API runs on a different host.
+If `VAP_API_KEY` is set on the API, set `VITE_API_KEY` in the web app to match.
 
 ## Repository layout
 - `apps/api` FastAPI service and pipeline core

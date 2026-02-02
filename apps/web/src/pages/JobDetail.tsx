@@ -8,6 +8,7 @@ import {
   getJobConfig,
   getMetrics,
   getTracks,
+  createShareLink,
   rerunAnalytics,
   updateJobConfig,
 } from "../api";
@@ -42,6 +43,9 @@ const JobDetail = () => {
   const [teamOverrides, setTeamOverrides] = useState<Record<string, string>>({});
   const [teamSaving, setTeamSaving] = useState(false);
   const [teamError, setTeamError] = useState<string | null>(null);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const inputSrc = useMemo(() => {
@@ -217,6 +221,21 @@ const JobDetail = () => {
     }
   };
 
+  const handleShare = async () => {
+    if (!jobId) return;
+    setShareLoading(true);
+    setShareError(null);
+    try {
+      const link = await createShareLink(jobId, 168);
+      const url = `${window.location.origin}/share/${link.id}`;
+      setShareLink(url);
+    } catch (err) {
+      setShareError((err as Error).message);
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   if (loading) {
     return <div className="panel">Loading job...</div>;
   }
@@ -236,11 +255,23 @@ const JobDetail = () => {
           <button className="btn-secondary" onClick={handleRerun} disabled={rerunLoading}>
             {rerunLoading ? "Re-running..." : "Re-run analytics"}
           </button>
+          <button className="btn-secondary" onClick={handleShare} disabled={shareLoading}>
+            {shareLoading ? "Creating share..." : "Create share link"}
+          </button>
           <a className="btn-primary" href={`${API_URL}/api/jobs/${job.id}/artifacts/report_html`}>
             Download report
           </a>
         </div>
       </div>
+      {shareLink && (
+        <div className="panel">
+          <div className="panel-header">
+            <h3>Share link</h3>
+          </div>
+          <p className="helper">{shareLink}</p>
+        </div>
+      )}
+      {shareError && <div className="alert">{shareError}</div>}
 
       <div className="studio-layout">
         <div className="video-panel">

@@ -2,6 +2,7 @@ import { Link, Route, Routes } from "react-router-dom";
 import Home from "./pages/Home";
 import JobDetail from "./pages/JobDetail";
 import NewAnalysis from "./pages/NewAnalysis";
+import ShareView from "./pages/ShareView";
 
 const App = () => {
   return (
@@ -24,6 +25,7 @@ const App = () => {
           <Route path="/" element={<Home />} />
           <Route path="/new" element={<NewAnalysis />} />
           <Route path="/jobs/:jobId" element={<JobDetail />} />
+          <Route path="/share/:shareId" element={<ShareView />} />
         </Routes>
       </main>
     </div>

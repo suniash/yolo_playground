@@ -79,3 +79,10 @@ class JobRecord(BaseModel):
     error: Optional[str] = None
     manifest: ArtifactManifest = Field(default_factory=ArtifactManifest)
     summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class ShareLink(BaseModel):
+    id: str
+    job_id: str
+    created_at: datetime
+    expires_at: Optional[datetime] = None

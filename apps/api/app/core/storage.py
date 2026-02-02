@@ -16,6 +16,10 @@ def jobs_root() -> Path:
     return ensure_dir(DATA_DIR / "jobs")
 
 
+def shares_file() -> Path:
+    return ensure_dir(DATA_DIR).joinpath("shares.json")
+
+
 def job_dir(job_id: str) -> Path:
     return ensure_dir(jobs_root() / job_id)
 

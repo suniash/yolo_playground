@@ -7,15 +7,17 @@ from pathlib import Path
 from typing import Optional
 
 import aiofiles
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from .core.config import DATA_DIR, DEFAULT_PROFILE
+from .core.auth import require_api_key
 from .core.jobs import JobStore
 from .core.pipeline import recompute_analytics
 from .core.schemas import JobConfig, JobConfigUpdate, JobStatus
-from .core.storage import artifacts_dir, input_dir, job_file, load_json, save_json
+from .core.shares import ShareStore
+from .core.storage import artifacts_dir, input_dir, job_file, load_json, save_json, shares_file
 
 
 @asynccontextmanager
@@ -23,6 +25,9 @@ async def lifespan(app: FastAPI):
     store = JobStore(DATA_DIR)
     await store.load_from_disk()
     app.state.store = store
+    share_store = ShareStore(shares_file())
+    await share_store.load()
+    app.state.share_store = share_store
     yield
 
 
@@ -43,14 +48,14 @@ async def health():
 
 
 @app.get("/api/jobs")
-async def list_jobs():
+async def list_jobs(_: None = Depends(require_api_key)):
     store: JobStore = app.state.store
     jobs = await store.list_jobs()
     return [job.model_dump() for job in jobs]
 
 
 @app.get("/api/jobs/{job_id}")
-async def get_job(job_id: str):
+async def get_job(job_id: str, _: None = Depends(require_api_key)):
     store: JobStore = app.state.store
     try:
         job = await store.get_job(job_id)
@@ -60,7 +65,7 @@ async def get_job(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/config")
-async def get_job_config(job_id: str):
+async def get_job_config(job_id: str, _: None = Depends(require_api_key)):
     store: JobStore = app.state.store
     try:
         job = await store.get_job(job_id)
@@ -70,7 +75,7 @@ async def get_job_config(job_id: str):
 
 
 @app.patch("/api/jobs/{job_id}/config")
-async def update_job_config(job_id: str, payload: JobConfigUpdate):
+async def update_job_config(job_id: str, payload: JobConfigUpdate, _: None = Depends(require_api_key)):
     store: JobStore = app.state.store
     try:
         job = await store.get_job(job_id)
@@ -92,6 +97,7 @@ async def create_job(
     video: Optional[UploadFile] = File(default=None),
     image: Optional[UploadFile] = File(default=None),
     config: Optional[str] = Form(default=None),
+    _: None = Depends(require_api_key),
 ):
     store: JobStore = app.state.store
 
@@ -128,7 +134,7 @@ async def create_job(
 
 
 @app.get("/api/jobs/{job_id}/input")
-async def get_input(job_id: str):
+async def get_input(job_id: str, _: None = Depends(require_api_key)):
     store: JobStore = app.state.store
     try:
         job = await store.get_job(job_id)
@@ -142,7 +148,7 @@ async def get_input(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/tracks")
-async def get_tracks(job_id: str):
+async def get_tracks(job_id: str, _: None = Depends(require_api_key)):
     path = artifacts_dir(job_id) / "tracks.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="tracks not available")
@@ -150,7 +156,7 @@ async def get_tracks(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/metrics")
-async def get_metrics(job_id: str):
+async def get_metrics(job_id: str, _: None = Depends(require_api_key)):
     path = artifacts_dir(job_id) / "metrics.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="metrics not available")
@@ -158,7 +164,7 @@ async def get_metrics(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/events")
-async def get_events(job_id: str):
+async def get_events(job_id: str, _: None = Depends(require_api_key)):
     path = artifacts_dir(job_id) / "events.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="events not available")
@@ -166,7 +172,7 @@ async def get_events(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/manifest")
-async def get_manifest(job_id: str):
+async def get_manifest(job_id: str, _: None = Depends(require_api_key)):
     path = artifacts_dir(job_id) / "manifest.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="manifest not available")
@@ -174,7 +180,7 @@ async def get_manifest(job_id: str):
 
 
 @app.get("/api/jobs/{job_id}/artifacts/{artifact_name}")
-async def download_artifact(job_id: str, artifact_name: str):
+async def download_artifact(job_id: str, artifact_name: str, _: None = Depends(require_api_key)):
     job_manifest_path = artifacts_dir(job_id) / "manifest.json"
     if not job_manifest_path.exists():
         raise HTTPException(status_code=404, detail="manifest not available")
@@ -188,7 +194,7 @@ async def download_artifact(job_id: str, artifact_name: str):
 
 
 @app.post("/api/jobs/{job_id}/rerun")
-async def rerun_analytics(job_id: str, payload: Optional[JobConfigUpdate] = None):
+async def rerun_analytics(job_id: str, payload: Optional[JobConfigUpdate] = None, _: None = Depends(require_api_key)):
     store: JobStore = app.state.store
     try:
         job = await store.get_job(job_id)
@@ -224,3 +230,75 @@ async def rerun_analytics(job_id: str, payload: Optional[JobConfigUpdate] = None
     save_json(job_file(job.id), job.model_dump())
 
     return job.model_dump()
+
+
+@app.post("/api/jobs/{job_id}/share")
+async def create_share_link(job_id: str, ttl_hours: Optional[int] = None, _: None = Depends(require_api_key)):
+    store: JobStore = app.state.store
+    share_store: ShareStore = app.state.share_store
+    try:
+        await store.get_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found")
+    link = await share_store.create(job_id, ttl_hours=ttl_hours)
+    return link.model_dump()
+
+
+@app.get("/api/share/{share_id}/job")
+async def get_shared_job(share_id: str):
+    share_store: ShareStore = app.state.share_store
+    store: JobStore = app.state.store
+    link = await share_store.get(share_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="share link invalid")
+    job = await store.get_job(link.job_id)
+    return job.model_dump()
+
+
+@app.get("/api/share/{share_id}/tracks")
+async def get_shared_tracks(share_id: str):
+    share_store: ShareStore = app.state.share_store
+    link = await share_store.get(share_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="share link invalid")
+    path = artifacts_dir(link.job_id) / "tracks.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="tracks not available")
+    return JSONResponse(load_json(path))
+
+
+@app.get("/api/share/{share_id}/metrics")
+async def get_shared_metrics(share_id: str):
+    share_store: ShareStore = app.state.share_store
+    link = await share_store.get(share_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="share link invalid")
+    path = artifacts_dir(link.job_id) / "metrics.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="metrics not available")
+    return JSONResponse(load_json(path))
+
+
+@app.get("/api/share/{share_id}/events")
+async def get_shared_events(share_id: str):
+    share_store: ShareStore = app.state.share_store
+    link = await share_store.get(share_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="share link invalid")
+    path = artifacts_dir(link.job_id) / "events.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="events not available")
+    return JSONResponse(load_json(path))
+
+
+@app.get("/api/share/{share_id}/input")
+async def get_shared_input(share_id: str):
+    share_store: ShareStore = app.state.share_store
+    store: JobStore = app.state.store
+    link = await share_store.get(share_id)
+    if not link:
+        raise HTTPException(status_code=404, detail="share link invalid")
+    job = await store.get_job(link.job_id)
+    if not job.input:
+        raise HTTPException(status_code=404, detail="input not available")
+    return FileResponse(job.input["path"], media_type=job.input.get("content_type"), filename=job.input["filename"])
