@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { JobRecord, listJobs } from "../api";
+import { API_KEY, API_URL, JobRecord, listJobs } from "../api";
 
 const statusTone: Record<string, string> = {
   queued: "status-chip status-queued",
@@ -14,9 +14,39 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     listJobs()
-      .then((data) => setJobs(data))
-      .finally(() => setLoading(false));
+      .then((data) => {
+        if (active) setJobs(data);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    const url = new URL(`${API_URL}/api/updates/jobs`);
+    if (API_KEY) {
+      url.searchParams.set("api_key", API_KEY);
+    }
+    const source = new EventSource(url.toString());
+    source.addEventListener("list", (event) => {
+      const data = JSON.parse((event as MessageEvent).data) as JobRecord[];
+      setJobs(data);
+    });
+    source.addEventListener("job", (event) => {
+      const data = JSON.parse((event as MessageEvent).data) as JobRecord;
+      setJobs((prev) => {
+        const exists = prev.some((job) => job.id === data.id);
+        if (exists) {
+          return prev.map((job) => (job.id === data.id ? data : job));
+        }
+        return [data, ...prev];
+      });
+    });
+
+    return () => {
+      active = false;
+      source.close();
+    };
   }, []);
 
   return (

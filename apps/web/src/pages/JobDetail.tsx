@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
+  API_KEY,
   API_URL,
   JobRecord,
   getEvents,
@@ -62,19 +63,26 @@ const JobDetail = () => {
       if (!active) return;
       setJob(data);
       setLoading(false);
-      return data;
     };
 
-    const poll = async () => {
-      const data = await loadJob();
-      if (data && data.status !== "completed" && data.status !== "failed") {
-        setTimeout(poll, 2000);
-      }
+    loadJob();
+    const url = new URL(`${API_URL}/api/updates/jobs/${jobId}`);
+    if (API_KEY) {
+      url.searchParams.set("api_key", API_KEY);
+    }
+    const source = new EventSource(url.toString());
+    source.onmessage = (event) => {
+      const data = JSON.parse(event.data) as JobRecord;
+      setJob(data);
+      setLoading(false);
+    };
+    source.onerror = () => {
+      source.close();
     };
 
-    poll();
     return () => {
       active = false;
+      source.close();
     };
   }, [jobId]);
 

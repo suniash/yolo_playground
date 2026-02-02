@@ -86,3 +86,8 @@ class ShareLink(BaseModel):
     job_id: str
     created_at: datetime
     expires_at: Optional[datetime] = None
+
+
+class StreamJobRequest(BaseModel):
+    stream_url: str
+    config: Optional[JobConfig] = None

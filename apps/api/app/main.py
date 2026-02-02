@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -9,13 +10,13 @@ from typing import Optional
 import aiofiles
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from .core.config import DATA_DIR, DEFAULT_PROFILE
 from .core.auth import require_api_key
 from .core.jobs import JobStore
 from .core.pipeline import recompute_analytics
-from .core.schemas import JobConfig, JobConfigUpdate, JobStatus
+from .core.schemas import JobConfig, JobConfigUpdate, JobStatus, StreamJobRequest
 from .core.shares import ShareStore
 from .core.storage import artifacts_dir, input_dir, job_file, load_json, save_json, shares_file
 
@@ -54,42 +55,20 @@ async def list_jobs(_: None = Depends(require_api_key)):
     return [job.model_dump() for job in jobs]
 
 
-@app.get("/api/jobs/{job_id}")
-async def get_job(job_id: str, _: None = Depends(require_api_key)):
+@app.post("/api/streams")
+async def create_stream_job(payload: StreamJobRequest, _: None = Depends(require_api_key)):
     store: JobStore = app.state.store
-    try:
-        job = await store.get_job(job_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="job not found")
-    return job.model_dump()
-
-
-@app.get("/api/jobs/{job_id}/config")
-async def get_job_config(job_id: str, _: None = Depends(require_api_key)):
-    store: JobStore = app.state.store
-    try:
-        job = await store.get_job(job_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="job not found")
-    return job.config.model_dump()
-
-
-@app.patch("/api/jobs/{job_id}/config")
-async def update_job_config(job_id: str, payload: JobConfigUpdate, _: None = Depends(require_api_key)):
-    store: JobStore = app.state.store
-    try:
-        job = await store.get_job(job_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="job not found")
-
-    updates = payload.model_dump(exclude_unset=True, exclude_none=True)
-    if not updates:
-        return job.config.model_dump()
-
-    job.config = job.config.model_copy(update=updates)
+    job_config = payload.config or JobConfig(profile=DEFAULT_PROFILE)
+    job = await store.create_job(job_config)
+    job.input = {
+        "filename": payload.stream_url,
+        "content_type": "application/x-stream",
+        "path": payload.stream_url,
+    }
     job.updated_at = datetime.utcnow()
     await store.update_job(job)
-    return job.config.model_dump()
+    store.start_job(job.id, None)
+    return job.model_dump()
 
 
 @app.post("/api/jobs")
@@ -131,6 +110,44 @@ async def create_job(
     store.start_job(job.id, input_path)
 
     return job.model_dump()
+
+
+@app.get("/api/jobs/{job_id}")
+async def get_job(job_id: str, _: None = Depends(require_api_key)):
+    store: JobStore = app.state.store
+    try:
+        job = await store.get_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job.model_dump()
+
+
+@app.get("/api/jobs/{job_id}/config")
+async def get_job_config(job_id: str, _: None = Depends(require_api_key)):
+    store: JobStore = app.state.store
+    try:
+        job = await store.get_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job.config.model_dump()
+
+
+@app.patch("/api/jobs/{job_id}/config")
+async def update_job_config(job_id: str, payload: JobConfigUpdate, _: None = Depends(require_api_key)):
+    store: JobStore = app.state.store
+    try:
+        job = await store.get_job(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    updates = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not updates:
+        return job.config.model_dump()
+
+    job.config = job.config.model_copy(update=updates)
+    job.updated_at = datetime.utcnow()
+    await store.update_job(job)
+    return job.config.model_dump()
 
 
 @app.get("/api/jobs/{job_id}/input")
@@ -230,6 +247,55 @@ async def rerun_analytics(job_id: str, payload: Optional[JobConfigUpdate] = None
     save_json(job_file(job.id), job.model_dump())
 
     return job.model_dump()
+
+
+def _sse_payload(data: dict | list, event: str | None = None) -> str:
+    body = f"data: {json.dumps(data)}\n\n"
+    if event:
+        return f"event: {event}\n{body}"
+    return body
+
+
+@app.get("/api/updates/jobs")
+async def watch_jobs(_: None = Depends(require_api_key)):
+    store: JobStore = app.state.store
+    queue = await store.subscribe_all()
+
+    async def generator():
+        try:
+            jobs = await store.list_jobs()
+            yield _sse_payload([job.model_dump() for job in jobs], event="list")
+            while True:
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=15)
+                    yield _sse_payload(payload, event="job")
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            await store.unsubscribe(queue)
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
+
+
+@app.get("/api/updates/jobs/{job_id}")
+async def watch_job(job_id: str, _: None = Depends(require_api_key)):
+    store: JobStore = app.state.store
+    queue = await store.subscribe_job(job_id)
+
+    async def generator():
+        try:
+            job = await store.get_job(job_id)
+            yield _sse_payload(job.model_dump())
+            while True:
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=15)
+                    yield _sse_payload(payload)
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+        finally:
+            await store.unsubscribe(queue, job_id)
+
+    return StreamingResponse(generator(), media_type="text/event-stream")
 
 
 @app.post("/api/jobs/{job_id}/share")

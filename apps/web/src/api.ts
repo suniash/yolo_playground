@@ -69,6 +69,28 @@ export const createJob = async (payload: {
   return response.json();
 };
 
+export const createStreamJob = async (payload: {
+  streamUrl: string;
+  profile: string;
+  analyticsEnabled: boolean;
+}) => {
+  const response = await fetch(`${API_URL}/api/streams`, {
+    method: "POST",
+    headers: withAuth({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      stream_url: payload.streamUrl,
+      config: {
+        profile: payload.profile,
+        analytics_enabled: payload.analyticsEnabled,
+      },
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+  return response.json();
+};
+
 export const rerunAnalytics = async (
   jobId: string,
   updates?: Record<string, unknown>

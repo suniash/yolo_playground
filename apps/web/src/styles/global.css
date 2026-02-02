@@ -266,6 +266,17 @@ a {
   max-width: 520px;
 }
 
+.toggle-row {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.toggle-row input {
+  margin-right: 6px;
+}
+
 .field {
   display: flex;
   flex-direction: column;

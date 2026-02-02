@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
-from functools import wraps
-from typing import Callable
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Query
 
 
-def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+def require_api_key(
+    x_api_key: str | None = Header(default=None),
+    api_key: str | None = Query(default=None),
+) -> None:
     expected = os.getenv("VAP_API_KEY")
     if not expected:
         return
-    if not x_api_key or x_api_key != expected:
+    token = x_api_key or api_key
+    if not token or token != expected:
         raise HTTPException(status_code=401, detail="invalid api key")
 
 

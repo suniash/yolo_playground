@@ -20,6 +20,9 @@ Optional real CV
 1. `pip install -r requirements-cv.txt`
 2. `VAP_CV_PROVIDER=ultralytics VAP_MODEL=yolov8n.pt uvicorn app.main:app --reload --port 8000`
 
+Stream input (placeholder)
+Send a POST to `/api/streams` with `stream_url` and optional config JSON to create a stream job.
+
 Web
 1. `cd apps/web`
 2. `npm install`
