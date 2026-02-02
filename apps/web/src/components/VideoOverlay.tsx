@@ -22,6 +22,7 @@ interface VideoOverlayProps {
   showPlayers: boolean;
   showBall: boolean;
   showTrails: boolean;
+  teamOverrides?: Record<string, string>;
   onReady?: (video: HTMLVideoElement | null) => void;
 }
 
@@ -37,6 +38,7 @@ const VideoOverlay = ({
   showPlayers,
   showBall,
   showTrails,
+  teamOverrides,
   onReady,
 }: VideoOverlayProps) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -102,7 +104,11 @@ const VideoOverlay = ({
         if (obj.label === "ball" && !showBall) return;
 
         const [x, y, w, h] = obj.bbox;
-        const color = obj.label === "ball" ? teamColors.ball : teamColors[obj.team ?? "A"];
+        const resolvedTeam =
+          obj.label === "player"
+            ? teamOverrides?.[obj.id] ?? obj.team ?? "A"
+            : obj.team ?? "A";
+        const color = obj.label === "ball" ? teamColors.ball : teamColors[resolvedTeam];
         ctx.strokeStyle = color;
         ctx.lineWidth = obj.label === "ball" ? 2 : 3;
         ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);

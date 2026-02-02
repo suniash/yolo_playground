@@ -54,9 +54,14 @@ export const createJob = async (payload: {
   return response.json();
 };
 
-export const rerunAnalytics = async (jobId: string) => {
+export const rerunAnalytics = async (
+  jobId: string,
+  updates?: Record<string, unknown>
+) => {
   const response = await fetch(`${API_URL}/api/jobs/${jobId}/rerun`, {
     method: "POST",
+    headers: updates ? { "Content-Type": "application/json" } : undefined,
+    body: updates ? JSON.stringify(updates) : undefined,
   });
   if (!response.ok) {
     throw new Error(await response.text());

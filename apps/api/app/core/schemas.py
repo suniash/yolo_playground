@@ -37,6 +37,7 @@ class JobConfig(BaseModel):
     calibration_points: list[CalibrationPoint] = Field(default_factory=list)
     zones: list[ZoneDefinition] = Field(default_factory=list)
     thresholds: dict[str, float] = Field(default_factory=dict)
+    team_overrides: dict[str, str] = Field(default_factory=dict)
 
 
 class JobConfigUpdate(BaseModel):
@@ -45,6 +46,7 @@ class JobConfigUpdate(BaseModel):
     calibration_points: Optional[list[CalibrationPoint]] = None
     zones: Optional[list[ZoneDefinition]] = None
     thresholds: Optional[dict[str, float]] = None
+    team_overrides: Optional[dict[str, str]] = None
 
 
 class InputAsset(BaseModel):

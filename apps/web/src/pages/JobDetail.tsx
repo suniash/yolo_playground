@@ -16,6 +16,7 @@ import CalibrationEditor, {
 } from "../components/CalibrationEditor";
 import EventTimeline from "../components/EventTimeline";
 import MetricsPanel from "../components/MetricsPanel";
+import TeamAssignment from "../components/TeamAssignment";
 import VideoOverlay from "../components/VideoOverlay";
 import ZoneEditor, { ZoneDraft } from "../components/ZoneEditor";
 
@@ -38,6 +39,9 @@ const JobDetail = () => {
   const [zonesError, setZonesError] = useState<string | null>(null);
   const [calibrationSaving, setCalibrationSaving] = useState(false);
   const [calibrationError, setCalibrationError] = useState<string | null>(null);
+  const [teamOverrides, setTeamOverrides] = useState<Record<string, string>>({});
+  const [teamSaving, setTeamSaving] = useState(false);
+  const [teamError, setTeamError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const inputSrc = useMemo(() => {
@@ -82,6 +86,7 @@ const JobDetail = () => {
           .map((pair: number[]) => `${pair[0]},${pair[1]}`)
           .join("; "),
       }));
+      const overrides = (config.team_overrides as Record<string, string> | undefined) ?? {};
       const calibrationDrafts = (config.calibration_points as any[] | undefined)?.map(
         (point) => ({
           image_x: String(point.image_x ?? ""),
@@ -91,6 +96,7 @@ const JobDetail = () => {
         })
       );
       setZones(zoneDrafts ?? []);
+      setTeamOverrides(overrides);
       setCalibrationPoints(calibrationDrafts ?? []);
     };
 
@@ -193,6 +199,24 @@ const JobDetail = () => {
     }
   };
 
+  const handleTeamSave = async () => {
+    if (!jobId) return;
+    setTeamSaving(true);
+    setTeamError(null);
+    try {
+      const cleaned = Object.fromEntries(
+        Object.entries(teamOverrides).filter(([, value]) => value === "A" || value === "B")
+      );
+      const updated = await rerunAnalytics(jobId, { team_overrides: cleaned });
+      setJob(updated);
+      setTeamOverrides(cleaned);
+    } catch (err) {
+      setTeamError((err as Error).message);
+    } finally {
+      setTeamSaving(false);
+    }
+  };
+
   if (loading) {
     return <div className="panel">Loading job...</div>;
   }
@@ -227,6 +251,7 @@ const JobDetail = () => {
               showPlayers={showPlayers}
               showBall={showBall}
               showTrails={showTrails}
+              teamOverrides={teamOverrides}
               onReady={(video) => (videoRef.current = video)}
             />
           ) : (
@@ -263,6 +288,23 @@ const JobDetail = () => {
         <div className="right-panel">
           <MetricsPanel metrics={metrics} />
           <EventTimeline events={events} onSelect={handleEventSelect} />
+          <TeamAssignment
+            players={tracks?.tracks?.filter((track: any) => track.label === "player") ?? []}
+            overrides={teamOverrides}
+            onChange={(playerId, team) =>
+              setTeamOverrides((prev) => {
+                if (!team) {
+                  const next = { ...prev };
+                  delete next[playerId];
+                  return next;
+                }
+                return { ...prev, [playerId]: team };
+              })
+            }
+            onSave={handleTeamSave}
+            saving={teamSaving}
+            error={teamError}
+          />
           <ZoneEditor
             zones={zones}
             onUpdate={(index, zone) => {

@@ -140,9 +140,23 @@ def _compute_metrics(config: JobConfig, series: dict[str, Any]) -> dict[str, Any
     ball_positions: list[tuple[float, float]] = series["ball_positions"]
     owner_by_frame: list[str] = series["owner_by_frame"]
 
+    def _default_team(player_id: str) -> str:
+        if player_id.startswith("p"):
+            try:
+                return "A" if int(player_id[1:]) <= len(player_positions) / 2 else "B"
+            except ValueError:
+                return "A"
+        return "A"
+
+    def _resolve_team(player_id: str) -> str:
+        override = config.team_overrides.get(player_id)
+        if override in {"A", "B"}:
+            return override
+        return _default_team(player_id)
+
     team_possession_frames = {"A": 0, "B": 0}
     for owner in owner_by_frame:
-        team = "A" if owner.startswith("p") and int(owner[1:]) <= len(player_positions) / 2 else "B"
+        team = _resolve_team(owner)
         team_possession_frames[team] += 1
 
     frame_count = len(owner_by_frame)
@@ -175,7 +189,7 @@ def _compute_metrics(config: JobConfig, series: dict[str, Any]) -> dict[str, Any
             cell_y = int(_clamp((field_y / field_width) * 6, 0, 5))
             heatmap[cell_y][cell_x] += 1
 
-        team = "A" if int(player_id[1:]) <= len(player_positions) / 2 else "B"
+        team = _resolve_team(player_id)
         for row_idx in range(6):
             for col_idx in range(10):
                 heatmap_grid[team][row_idx][col_idx] += heatmap[row_idx][col_idx]
